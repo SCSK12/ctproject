@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>로봇 최단거리 청소하기</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      margin: 20px;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    h1 {
+      color: #2c3e50;
+      font-size: 24px;
+    }
+    .box {
+      border: 2px solid #ccc;
+      padding: 15px;
+      background-color: #f9f9f9;
+      margin-top: 10px;
+    }
+    table {
+      border-collapse: collapse;
+      margin-top: 10px;
+      width: 100%;
+      max-width: 400px;
+    }
+    td {
+      width: 20%;
+      height: 60px;
+      border: 1px solid #333;
+      text-align: center;
+      vertical-align: middle;
+      font-size: 20px;
+    }
+    .robot { background-color: lightblue; }
+    .obstacle { background-color: gray; }
+    .goal { background-color: lightgreen; }
+    #timer { font-size: 24px; color: #e74c3c; margin-top: 10px; }
+    select, button, textarea {
+      margin-top: 10px;
+      padding: 8px;
+      font-size: 16px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .hint {
+      font-size: 16px;
+      margin-top: 10px;
+      color: #2c3e50;
+    }
+
+    /* ✅ 모바일에서만 터치 버튼 보이게 하기 */
+    #touchControls {
+      display: block;
+    }
+
+    @media (min-width: 768px) {
+      #touchControls {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<h1>로봇 최단거리 청소하기</h1>
+
+<div class="box">
+  <h3>📘 CT 사고 단계</h3>
+  <ol>
+    <li><strong>문제 이해:</strong> 로봇이 쓰레기(G)까지 이동</li>
+    <li><strong>문제 분해:</strong> 격자 구조, 시작점, 장애물, 목적지 정의</li>
+    <li><strong>패턴 인식:</strong> 장애물을 피해 경로 찾기</li>
+    <li><strong>추상화:</strong> 격자 데이터를 코드로 표현</li>
+    <li><strong>알고리즘 설계:</strong> 방향키 또는 터치로 로봇을 이동</li>
+  </ol>
+</div>
+
+<div class="box">
+  <h3>📌 격자 입력 저장 및 랜덤 생성</h3>
+  <textarea id="gridInput" rows="5"></textarea>
+  <button onclick="generateRandomGrid()">🔀 랜덤 문제 생성</button>
+  <button onclick="saveProblem()">💾 문제 저장</button>
+  <button onclick="restartGame()">🔄 다시 시작하기</button>
+</div>
+
+<div class="box">
+  <h3>🧭 격자 및 로봇 이동</h3>
+  <div id="swipeArea">
+    <table id="grid"></table>
+  </div>
+</div>
+
+<!-- ✅ 모바일 전용 방향 버튼 UI -->
+<div class="box" id="touchControls" style="text-align:center; margin-top: 20px;">
+  <h3>📱 터치 조작 (모바일 전용)</h3>
+  <div style="display: flex; justify-content: center; flex-direction: column; align-items: center; gap: 5px;">
+    <button onclick="moveRobot(-1,0)">⬆️ 위</button>
+    <div>
+      <button onclick="moveRobot(0,-1)">⬅️ 왼쪽</button>
+      <button onclick="moveRobot(1,0)">⬇️ 아래</button>
+      <button onclick="moveRobot(0,1)">➡️ 오른쪽</button>
+    </div>
+  </div>
+</div>
+
+<div>
+  <label for="timeSelect">🕒 시간 설정:</label>
+  <select id="timeSelect">
+    <option value="30">30초</option>
+    <option value="60">1분</option>
+    <option value="90">1분 30초</option>
+    <option value="120">2분</option>
+  </select>
+  <button onclick="startTimer()">⏳ 시간 시작</button>
+  <button onclick="pauseTimer()">⏸️ 시간 멈춤</button>
+</div>
+
+<div id="timer"></div>
+<div class="hint" id="hintBox">💡 힌트: 최단거리 경로를 생각해보세요!</div>
+
+<script>
+let gridData = [];
+let robotPos = { x: 0, y: 0 };
+let countdown;
+let remainingTime = 0;
+let timerPaused = false;
+let timeExpired = false;
+
+function generateRandomGrid() {
+  const options = ['.', '.', '.', '.', 'X'];
+  const grid = [];
+  for (let i = 0; i < 5; i++) {
+    const row = [];
+    for (let j = 0; j < 5; j++) {
+      row.push(options[Math.floor(Math.random() * options.length)]);
+    }
+    grid.push(row);
+  }
+  grid[0][0] = 'S';
+  grid[4][4] = 'G';
+  document.getElementById("gridInput").value = grid.map(r => r.join(' ')).join('\n');
+  loadGrid();
+}
+
+function saveProblem() {
+  const blob = new Blob([document.getElementById("gridInput").value], { type: 'text/plain' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = "robot_problem.txt";
+  link.click();
+}
+
+function loadGrid() {
+  const input = document.getElementById("gridInput").value.trim();
+  const rows = input.split('\n');
+  gridData = rows.map(row => row.trim().split(/\s+/));
+  for (let i = 0; i < gridData.length; i++) {
+    for (let j = 0; j < gridData[i].length; j++) {
+      if (gridData[i][j] === 'S') robotPos = { x: i, y: j };
+    }
+  }
+  drawGrid();
+}
+
+function drawGrid() {
+  const table = document.getElementById("grid");
+  table.innerHTML = '';
+  for (let i = 0; i < 5; i++) {
+    const row = table.insertRow();
+    for (let j = 0; j < 5; j++) {
+      const cell = row.insertCell();
+      let value = gridData[i][j];
+      cell.textContent = value === '.' ? '' : value;
+      if (i === robotPos.x && j === robotPos.y) {
+        cell.className = 'robot';
+        cell.textContent = '🤖';
+      } else if (value === 'X') {
+        cell.className = 'obstacle';
+      } else if (value === 'G') {
+        cell.className = 'goal';
+      }
+    }
+  }
+}
+
+function moveRobot(dx, dy) {
+  if (timeExpired) return;
+  const nx = robotPos.x + dx;
+  const ny = robotPos.y + dy;
+  if (nx < 0 || ny < 0 || nx >= 5 || ny >= 5) return;
+  const nextCell = gridData[nx][ny];
+
+  if (nextCell === 'X') {
+    robotPos = { x: nx, y: ny };
+    drawGrid();
+    setTimeout(() => {
+      document.getElementById("grid").rows[nx].cells[ny].textContent = '💥';
+    }, 100);
+    clearInterval(countdown);
+    alert("💥 로봇이 장애물에 부딪혔습니다!");
+    timeExpired = true;
+    return;
+  }
+
+  robotPos = { x: nx, y: ny };
+  if (nextCell === 'G') {
+    drawGrid();
+    clearInterval(countdown);
+    alert("🎉 미션 성공! 쓰레기를 청소했습니다!");
+    timeExpired = true;
+  } else {
+    drawGrid();
+  }
+}
+
+document.addEventListener('keydown', function (e) {
+  if (timerPaused || timeExpired) return;
+  switch (e.key) {
+    case 'ArrowUp': moveRobot(-1, 0); break;
+    case 'ArrowDown': moveRobot(1, 0); break;
+    case 'ArrowLeft': moveRobot(0, -1); break;
+    case 'ArrowRight': moveRobot(0, 1); break;
+  }
+});
+
+function restartGame() {
+  clearInterval(countdown);
+  document.getElementById("timer").innerText = '';
+  timerPaused = false;
+  timeExpired = false;
+  loadGrid();
+}
+
+function startTimer() {
+  clearInterval(countdown);
+  remainingTime = parseInt(document.getElementById("timeSelect").value);
+  timerPaused = false;
+  timeExpired = false;
+  updateTimerDisplay();
+  countdown = setInterval(() => {
+    if (!timerPaused) {
+      remainingTime--;
+      updateTimerDisplay();
+      if (remainingTime <= 0) {
+        clearInterval(countdown);
+        showTimeoutPopup();
+        timeExpired = true;
+      }
+    }
+  }, 1000);
+}
+
+function pauseTimer() {
+  timerPaused = !timerPaused;
+  document.querySelector("button[onclick='pauseTimer()']").innerText = timerPaused ? "▶️ 다시 시작" : "⏸️ 시간 멈춤";
+}
+
+function updateTimerDisplay() {
+  const m = String(Math.floor(remainingTime / 60)).padStart(2, '0');
+  const s = String(remainingTime % 60).padStart(2, '0');
+  document.getElementById("timer").innerText = `⏳ 남은 시간: ${m}:${s}`;
+}
+
+function showTimeoutPopup() {
+  alert("⏰ 시간이 종료되었습니다! 로봇 이동이 비활성화됩니다.");
+}
+
+// ✅ 터치 스와이프 기능
+let startX = 0, startY = 0;
+const swipeArea = document.getElementById("swipeArea");
+
+swipeArea.addEventListener("touchstart", function (e) {
+  startX = e.touches[0].clientX;
+  startY = e.touches[0].clientY;
+});
+
+swipeArea.addEventListener("touchend", function (e) {
+  const dx = e.changedTouches[0].clientX - startX;
+  const dy = e.changedTouches[0].clientY - startY;
+  if (timeExpired || timerPaused) return;
+
+  if (Math.abs(dx) > Math.abs(dy)) {
+    if (dx > 30) moveRobot(0, 1);  // →
+    else if (dx < -30) moveRobot(0, -1); // ←
+  } else {
+    if (dy > 30) moveRobot(1, 0); // ↓
+    else if (dy < -30) moveRobot(-1, 0); // ↑
+  }
+});
+
+// 초기 실행
+window.onload = generateRandomGrid;
+</script>
+
+</body>
+</html>
