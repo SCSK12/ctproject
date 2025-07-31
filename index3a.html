@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>분자식을 통한 극성, 무극성 분자 구분하기</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; padding: 0; background: #f0f4f8; }
+    h1, h2 { text-align: center; }
+    .box { background: white; border-radius: 10px; padding: 20px; margin: 20px auto; max-width: 700px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    button, select { padding: 10px; font-size: 16px; margin: 5px; border-radius: 6px; border: 1px solid #ccc; }
+    #timer, #score { font-size: 20px; color: #e74c3c; text-align: center; }
+    #result, #questionLabel, #history, #hint, #report { font-weight: bold; margin-top: 15px; font-size: 18px; text-align: center; white-space: pre-line; }
+    img { max-width: 100%; margin-top: 10px; border: 1px solid #ccc; border-radius: 6px; }
+    @media (max-width: 600px) { body { margin: 10px; } }
+    .example-text { text-align: left; font-size: 16px; white-space: pre-line; }
+  </style>
+</head>
+<body>
+  <h1>📘 분자식을 통한 극성, 무극성 분자 구분하기</h1>
+  <h2>📌 대상: 고등학교 2학년</h2>
+  <h2>📌 과목: 화학 1</h2>
+
+  <div class="box">
+    <p><strong>분자식을 보고 극성 분자인지 무극성 분자인지 판단하세요.</strong></p>
+    <div>
+      <summary><strong>📖 극성 / 무극성 분자 예시 보기</strong></summary>
+      <div class="example-text">
+        - O<span style="vertical-align: sub;">2</span>: <strong>무극성</strong> – 같은 원소로 대칭 구조<br><br>
+        - HCl: <strong>극성</strong> – 전기음성도 차이 있음, 비대칭<br><br>
+        - BH<span style="vertical-align: sub;">3</span>: <strong>무극성</strong> – 대칭 구조로 쌍극자 상쇄<br><br>
+        - SiH<span style="vertical-align: sub;">4</span>: <strong>무극성</strong> – 대칭 구조로 쌍극자 상쇄<br><br>
+        - PF<span style="vertical-align: sub;">3</span>: <strong>극성</strong> – 비대칭 구조, 쌍극자 존재<br><br>
+        - H<span style="vertical-align: sub;">2</span>S: <strong>극성</strong> – 굽은 구조, 쌍극자 존재
+      </div>
+    </div>
+    <label for="difficulty">난이도 선택:</label>
+    <select id="difficulty" onchange="setDifficulty()">
+      <option value="easy">하: 대칭 구조 위주</option>
+      <option value="medium">중: 혼합 구조</option>
+      <option value="hard">상: 비대칭 구조 중심</option>
+    </select>
+    <br><br>
+    <label id="questionLabel">문제: 로딩 중...</label>
+    <br>
+    <select id="answerSelect">
+      <option value="극성">극성</option>
+      <option value="무극성">무극성</option>
+    </select>
+    <button onclick="submitAnswer()">정답 제출</button>
+    <button onclick="showHint()">힌트 보기</button>
+    <div id="result"></div>
+    <img id="feedback-img" src="" alt="분자 구조" style="display:none;">
+    <p id="explanation"></p>
+    <p id="hint"></p>
+  </div>
+
+  <div class="box">
+    <label for="timeSelect">⏱️ 시간 설정:</label>
+    <select id="timeSelect">
+      <option value="30">30초</option>
+      <option value="60">1분</option>
+      <option value="90">1분 30초</option>
+      <option value="120">2분</option>
+    </select>
+    <button onclick="startProblem()">시간 시작</button>
+    <button onclick="pauseTimer()">시간 멈춤</button>
+    <div id="timer"></div>
+  </div>
+
+  <div class="box">
+    <div id="score">점수: 0 | 정답률: 0%</div>
+    <h3>📊 문제 풀이 기록</h3>
+    <ul id="history"></ul>
+    <div id="report"></div>
+    <button onclick="resetSession()">🔄 다시 시작하기</button>
+  </div>
+
+<script>
+const moleculeDB = [
+  { name: "CO2", polarity: "무극성", difficulty: "easy", img: "https://i.imgur.com/7d3GyVG.png", explanation: "CO2는 선형 구조이고, C-O 간 전기음성도 차이(1.0)로 인해 C는 부분 양전하, O는 부분 음전하를 띠지만 분자가 완전히 대칭이므로 무극성입니다." },
+  { name: "H2O", polarity: "극성", difficulty: "hard", img: "https://i.imgur.com/ITz8aIG.png", explanation: "H2O는 굽은 구조이며 쌍극자 모멘트가 존재하여 극성입니다." },
+  { name: "CH4", polarity: "무극성", difficulty: "easy", img: "https://i.imgur.com/MqzOCkt.png", explanation: "CH4는 사면체 대칭 구조로 쌍극자 모멘트가 상쇄되어 무극성입니다." },
+  { name: "NH3", polarity: "극성", difficulty: "medium", img: "https://i.imgur.com/PK5EvUM.png", explanation: "NH3는 비대칭 구조로 쌍극자 모멘트가 존재하여 극성입니다." },
+  { name: "CCl4", polarity: "무극성", difficulty: "medium", img: "https://i.imgur.com/KDJKnGp.png", explanation: "CCl4는 대칭 구조로 쌍극자 모멘트가 상쇄되어 무극성입니다." },
+  { name: "CH3Cl", polarity: "극성", difficulty: "medium", img: "https://i.imgur.com/HqNOcPe.png", explanation: "CH3Cl은 비대칭 구조로 인해 극성입니다." },
+  { name: "O2", polarity: "무극성", difficulty: "easy", img: "https://i.imgur.com/W7JoX6r.png", explanation: "O2는 같은 원소로 이루어진 이원자 분자로 무극성입니다." },
+  { name: "SO2", polarity: "극성", difficulty: "hard", img: "https://i.imgur.com/hyJl9MZ.png", explanation: "SO2는 굽은 구조이고 쌍극자 모멘트가 존재하여 극성입니다." },
+  { name: "HCl", polarity: "극성", difficulty: "easy", img: "https://i.imgur.com/B5OBSEk.png", explanation: "HCl은 전기음성도 차이로 인해 쌍극자 모멘트가 존재하여 극성입니다." },
+  { name: "BF3", polarity: "무극성", difficulty: "hard", img: "https://i.imgur.com/2bNZF7Z.png", explanation: "BF3는 평면 삼각형 대칭 구조로 쌍극자 모멘트가 상쇄되어 무극성입니다." }
+];
+
+let currentSet = [];
+let currentQuestion = {};
+let correct = 0, total = 0;
+let countdown, remainingTime, isPaused = false;
+
+function setDifficulty() {
+  const level = document.getElementById("difficulty").value;
+  currentSet = moleculeDB.filter(m => m.difficulty === level);
+  nextRandomQuestion();
+}
+
+function nextRandomQuestion() {
+  const idx = Math.floor(Math.random() * currentSet.length);
+  currentQuestion = currentSet[idx];
+  document.getElementById("questionLabel").textContent = `문제: ${currentQuestion.name}는 극성 분자인가요, 무극성 분자인가요?`;
+  document.getElementById("result").textContent = "";
+  document.getElementById("explanation").textContent = "";
+  document.getElementById("feedback-img").style.display = "none";
+  document.getElementById("hint").textContent = "";
+}
+
+function submitAnswer() {
+  const userAnswer = document.getElementById("answerSelect").value;
+  const resultEl = document.getElementById("result");
+  const imgEl = document.getElementById("feedback-img");
+  const explanationEl = document.getElementById("explanation");
+  const history = document.getElementById("history");
+
+  total++;
+  let feedback;
+
+  if (userAnswer === currentQuestion.polarity) {
+    correct++;
+    resultEl.innerHTML = `✅ 정답입니다! ${currentQuestion.name}는 ${currentQuestion.polarity} 분자입니다.`;
+    feedback = `✔️ ${currentQuestion.explanation}`;
+  } else {
+    resultEl.innerHTML = `❌ 오답입니다. ${currentQuestion.name}는 ${currentQuestion.polarity} 분자입니다.`;
+    feedback = `❌ 왜 오답인가요?\n${currentQuestion.explanation}`;
+  }
+
+  explanationEl.textContent = feedback;
+  imgEl.src = currentQuestion.img;
+  imgEl.style.display = 'block';
+
+  const li = document.createElement("li");
+  li.textContent = `${currentQuestion.name}: ${userAnswer} → ${userAnswer === currentQuestion.polarity ? '정답' : '오답'}`;
+  history.appendChild(li);
+
+  updateScore();
+  generateReport();
+  nextRandomQuestion();
+}
+
+function updateScore() {
+  const rate = total === 0 ? 0 : Math.round((correct / total) * 100);
+  document.getElementById("score").textContent = `점수: ${correct} / ${total} | 정답률: ${rate}%`;
+}
+
+function generateReport() {
+  const rate = total === 0 ? 0 : Math.round((correct / total) * 100);
+  const report = document.getElementById("report");
+  let msg = "";
+  if (rate >= 80) msg = "🎉 아주 잘하고 있어요! 구조와 쌍극자 모멘트 이해가 잘 되어 있습니다.";
+  else if (rate >= 60) msg = "👍 괜찮은 결과예요. 쌍극자 방향을 다시 복습해보세요.";
+  else msg = "📚 복습이 필요해 보여요. 전기음성도 차이와 쌍극자 모멘트의 상쇄 여부를 꼭 확인하세요.";
+  report.textContent = `📈 피드백 리포트: 정답률 ${rate}% - ${msg}`;
+}
+
+function showHint() {
+  document.getElementById("hint").textContent = "💡 힌트: 전기음성도 차이가 크고 비대칭 구조일수록 쌍극자 모멘트가 상쇄되지 않아 극성이 됩니다.";
+}
+
+function startProblem() {
+  clearInterval(countdown);
+  remainingTime = parseInt(document.getElementById("timeSelect").value);
+  isPaused = false;
+  updateTimer();
+  countdown = setInterval(() => {
+    if (!isPaused) {
+      remainingTime--;
+      updateTimer();
+      if (remainingTime <= 0) {
+        clearInterval(countdown);
+        const retry = confirm("⏰ 시간이 종료되었습니다! 다시 도전하시겠습니까?");
+        if (retry) startProblem();
+      }
+    }
+  }, 1000);
+}
+
+function pauseTimer() {
+  isPaused = !isPaused;
+  document.querySelector("button[onclick='pauseTimer()']").innerText = isPaused ? "다시 시작" : "시간 멈춤";
+}
+
+function updateTimer() {
+  const m = String(Math.floor(remainingTime / 60)).padStart(2, '0');
+  const s = String(remainingTime % 60).padStart(2, '0');
+  document.getElementById("timer").innerText = `⏳ 남은 시간: ${m}:${s}`;
+}
+
+function resetSession() {
+  const confirmReset = confirm("정말로 다시 시작하시겠습니까? 점수, 기록, 시간이 초기화됩니다.");
+  if (!confirmReset) return;
+
+  correct = 0;
+  total = 0;
+  document.getElementById("score").textContent = "점수: 0 | 정답률: 0%";
+  document.getElementById("report").textContent = "";
+  document.getElementById("history").innerHTML = "";
+  document.getElementById("result").textContent = "";
+  document.getElementById("explanation").textContent = "";
+  document.getElementById("hint").textContent = "";
+  document.getElementById("feedback-img").style.display = "none";
+  clearInterval(countdown);
+  document.getElementById("timer").textContent = "";
+  isPaused = false;
+  nextRandomQuestion();
+}
+
+window.onload = () => {
+  document.getElementById("difficulty").value = "medium";
+  setDifficulty();
+};
+</script>
+</body>
+</html>
