@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>로봇 최단거리 청소하기</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      margin: 20px;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    h1 { color: #2c3e50; font-size: 24px; }
+    .box {
+      border: 2px solid #ccc;
+      padding: 15px;
+      background-color: #f9f9f9;
+      margin-top: 10px;
+    }
+    table {
+      border-collapse: collapse;
+      margin-top: 10px;
+      width: 100%;
+      max-width: 400px;
+    }
+    td {
+      width: 20%;
+      height: 60px;
+      border: 1px solid #333;
+      text-align: center;
+      vertical-align: middle;
+      font-size: 20px;
+      position: relative;
+    }
+    .robot { background-color: lightblue; }
+    .obstacle { background-color: gray; }
+    .goal { background-color: lightgreen; }
+    #timer { font-size: 24px; color: #e74c3c; margin-top: 10px; }
+    select, button, textarea {
+      margin-top: 10px;
+      padding: 8px;
+      font-size: 16px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .hint {
+      font-size: 16px;
+      margin-top: 10px;
+      color: #2c3e50;
+    }
+
+    #touchControls { display: block; }
+    @media (min-width: 768px) {
+      #touchControls { display: none; }
+    }
+
+    .step-number {
+      position: absolute;
+      bottom: 2px;
+      right: 4px;
+      font-size: 12px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+
+<h1>로봇 최단거리 청소하기</h1>
+
+<div class="box"> 
+  <h3>📘 CT 문항</h3>
+  <p><strong>문제 상황:</strong><br>
+    카피바라가 만든 로봇 청소기가 아래 그림처럼 생긴 5×5 격자 방 안에 있습니다.<br>
+    로봇은 현재 시작 위치 (0,0)에 있으며, 장애물(X)을 피해 쓰레기 더미(G)까지 이동해야 합니다.<br>
+    로봇은 한 번에 상, 하, 좌, 우로 한 칸씩만 움직일 수 있습니다.
+  </p>
+  <p><strong>[문제]</strong><br>
+    로봇이 G까지 도달할 수 있는 <strong>최소 이동 횟수</strong>를 구하세요.
+  </p>
+</div>
+
+<div class="box">
+  <h3>📌 격자 입력 저장 및 랜덤 생성</h3>
+  <textarea id="gridInput" rows="5"></textarea>
+  <button onclick="generateRandomGrid()">🔀 랜덤 문제 생성</button>
+  <button onclick="saveProblem()">💾 문제 저장</button>
+  <button onclick="restartGame()">🔄 다시 시작하기</button>
+</div>
+
+<div class="box">
+  <h3>🧭 격자 및 로봇 이동</h3>
+  <div id="swipeArea">
+    <table id="grid"></table>
+  </div>
+</div>
+
+<div class="box" id="touchControls" style="text-align:center; margin-top: 20px;">
+  <h3>📱 터치 조작 (모바일 전용)</h3>
+  <div style="display: flex; justify-content: center; flex-direction: column; align-items: center; gap: 5px;">
+    <button onclick="moveRobot(-1,0)">⬆️ 위</button>
+    <div>
+      <button onclick="moveRobot(0,-1)">⬅️ 왼쪽</button>
+      <button onclick="moveRobot(1,0)">⬇️ 아래</button>
+      <button onclick="moveRobot(0,1)">➡️ 오른쪽</button>
+    </div>
+  </div>
+</div>
+
+<div>
+  <label for="timeSelect">🕒 시간 설정:</label>
+  <select id="timeSelect">
+    <option value="30">30초</option>
+    <option value="60">1분</option>
+    <option value="90">1분 30초</option>
+    <option value="120">2분</option>
+  </select>
+  <button onclick="startTimer()">⏳ 시간 시작</button>
+  <button onclick="pauseTimer()">⏸️ 시간 멈춤</button>
+</div>
+
+<div id="timer"></div>
+<div class="hint" id="hintBox">💡 힌트: 최단거리 경로를 생각해보세요!</div>
+
+<script>
+let gridData = [];
+let robotPos = { x: 0, y: 0 };
+let countdown;
+let remainingTime = 0;
+let timerPaused = false;
+let timeExpired = false;
+let moveCount = 0;
+let shortestPathLength = 0;
+let moveHistory = [];
+
+function generateRandomGrid() {
+  const options = ['.', '.', '.', '.', 'X'];
+  const grid = [];
+  for (let i = 0; i < 5; i++) {
+    const row = [];
+    for (let j = 0; j < 5; j++) {
+      row.push(options[Math.floor(Math.random() * options.length)]);
+    }
+    grid.push(row);
+  }
+  grid[0][0] = 'S';
+  grid[4][4] = 'G';
+  document.getElementById("gridInput").value = grid.map(r => r.join(' ')).join('\n');
+  loadGrid();
+}
+
+function saveProblem() {
+  const blob = new Blob([document.getElementById("gridInput").value], { type: 'text/plain' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = "robot_problem.txt";
+  link.click();
+}
+
+function loadGrid() {
+  const input = document.getElementById("gridInput").value.trim();
+  const rows = input.split('\n');
+  gridData = rows.map(row => row.trim().split(/\s+/));
+  for (let i = 0; i < gridData.length; i++) {
+    for (let j = 0; j < gridData[i].length; j++) {
+      if (gridData[i][j] === 'S') robotPos = { x: i, y: j };
+    }
+  }
+  moveCount = 0;
+  moveHistory = [];
+  shortestPathLength = calculateShortestPath();
+  drawGrid();
+}
+
+function drawGrid() {
+  const table = document.getElementById("grid");
+  table.innerHTML = '';
+  for (let i = 0; i < 5; i++) {
+    const row = table.insertRow();
+    for (let j = 0; j < 5; j++) {
+      const cell = row.insertCell();
+      let value = gridData[i][j];
+      cell.textContent = value === '.' ? '' : value;
+
+      if (i === robotPos.x && j === robotPos.y) {
+        cell.className = 'robot';
+        cell.textContent = '🤖';
+      } else if (value === 'X') {
+        cell.className = 'obstacle';
+      } else if (value === 'G') {
+        cell.className = 'goal';
+      }
+
+      const historyIndex = moveHistory.findIndex(p => p.x === i && p.y === j);
+      if (historyIndex !== -1) {
+        const span = document.createElement('span');
+        span.className = 'step-number';
+        span.textContent = historyIndex + 1;
+        cell.appendChild(span);
+      }
+    }
+  }
+}
+
+function moveRobot(dx, dy) {
+  if (timeExpired) return;
+  const nx = robotPos.x + dx;
+  const ny = robotPos.y + dy;
+  if (nx < 0 || ny < 0 || nx >= 5 || ny >= 5) return;
+  const nextCell = gridData[nx][ny];
+
+  if (nextCell === 'X') {
+    robotPos = { x: nx, y: ny };
+    drawGrid();
+    setTimeout(() => {
+      document.getElementById("grid").rows[nx].cells[ny].textContent = '💥';
+    }, 100);
+    clearInterval(countdown);
+    alert("💥 로봇이 장애물에 부딪혔습니다!");
+    timeExpired = true;
+    return;
+  }
+
+  robotPos = { x: nx, y: ny };
+  moveCount++;
+  moveHistory.push({ x: nx, y: ny });
+
+  if (nextCell === 'G') {
+    drawGrid();
+    clearInterval(countdown);
+    timeExpired = true;
+    if (moveCount === shortestPathLength) {
+      alert(`🎉 미션 성공! 최단경로(${shortestPathLength}회 이동)로 청소를 완료했습니다!`);
+    } else {
+      alert(`🎉 미션 성공! 하지만 최단경로(${shortestPathLength}회)가 아닌 ${moveCount}회로 청소했습니다.`);
+    }
+  } else {
+    drawGrid();
+  }
+}
+
+document.addEventListener('keydown', function (e) {
+  if (timerPaused || timeExpired) return;
+  switch (e.key) {
+    case 'ArrowUp': moveRobot(-1, 0); break;
+    case 'ArrowDown': moveRobot(1, 0); break;
+    case 'ArrowLeft': moveRobot(0, -1); break;
+    case 'ArrowRight': moveRobot(0, 1); break;
+  }
+});
+
+function restartGame() {
+  clearInterval(countdown);
+  document.getElementById("timer").innerText = '';
+  timerPaused = false;
+  timeExpired = false;
+  loadGrid();
+}
+
+function startTimer() {
+  clearInterval(countdown);
+  remainingTime = parseInt(document.getElementById("timeSelect").value);
+  timerPaused = false;
+  timeExpired = false;
+  updateTimerDisplay();
+  countdown = setInterval(() => {
+    if (!timerPaused) {
+      remainingTime--;
+      updateTimerDisplay();
+      if (remainingTime <= 0) {
+        clearInterval(countdown);
+        showTimeoutPopup();
+        timeExpired = true;
+      }
+    }
+  }, 1000);
+}
+
+function pauseTimer() {
+  timerPaused = !timerPaused;
+  document.querySelector("button[onclick='pauseTimer()']").innerText = timerPaused ? "▶️ 다시 시작" : "⏸️ 시간 멈춤";
+}
+
+function updateTimerDisplay() {
+  const m = String(Math.floor(remainingTime / 60)).padStart(2, '0');
+  const s = String(remainingTime % 60).padStart(2, '0');
+  document.getElementById("timer").innerText = `⏳ 남은 시간: ${m}:${s}`;
+}
+
+function showTimeoutPopup() {
+  alert("⏰ 시간이 종료되었습니다! 로봇 이동이 비활성화됩니다.");
+}
+
+function calculateShortestPath() {
+  const visited = Array.from({ length: 5 }, () => Array(5).fill(false));
+  const queue = [];
+  const dirs = [[1,0],[0,1],[-1,0],[0,-1]];
+  let start, goal;
+  for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 5; j++) {
+      if (gridData[i][j] === 'S') start = [i, j];
+      if (gridData[i][j] === 'G') goal = [i, j];
+    }
+  }
+
+  queue.push({ x: start[0], y: start[1], dist: 0 });
+  visited[start[0]][start[1]] = true;
+
+  while (queue.length > 0) {
+    const { x, y, dist } = queue.shift();
+    if (x === goal[0] && y === goal[1]) return dist;
+    for (let [dx, dy] of dirs) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < 5 && ny < 5 && !visited[nx][ny] && gridData[nx][ny] !== 'X') {
+        visited[nx][ny] = true;
+        queue.push({ x: nx, y: ny, dist: dist + 1 });
+      }
+    }
+  }
+  return Infinity;
+}
+
+window.onload = generateRandomGrid;
+</script>
+
+</body>
+</html>
